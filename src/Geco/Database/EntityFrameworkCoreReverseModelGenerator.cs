@@ -413,7 +413,7 @@ namespace Geco.Database
                     WI();
                     foreach (var column in table.Columns.Where<Column>(c => c.ForeignKey == null))
                     {
-                        var propertyName = column.Metadata["Property"];
+                        var propertyName = column.Name;
                         DW($"entity.Property(e => e.{propertyName})");
                         IW($".HasColumnName(\"{column.Name}\")");
                         W($".HasColumnType(\"{GetColumnType(column)}\")");
