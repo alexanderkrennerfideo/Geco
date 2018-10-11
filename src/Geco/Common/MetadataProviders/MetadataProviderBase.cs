@@ -34,10 +34,25 @@ namespace Geco.Common.MetadataProviders
                     schema.Tables.Add(new Table(tableInfo.Name, schema).WithMetadata(tableInfo));
                 }
 
+                foreach (var tableInfo in LoadViews())
+                {
+                    var schema = db.Schemas.GetOrAdd(tableInfo.SchemaName, () => new Schema(tableInfo.SchemaName));
+                    schema.Views.Add(new Table(tableInfo.Name, schema).WithMetadata(tableInfo));
+                }
+
                 foreach (var columnInfo in LoadColumns())
                 {
                     var schema = db.Schemas[columnInfo.SchemaName];
                     var table = schema.Tables[columnInfo.TableName];
+                    var index = table.Columns.Count;
+                    table.Columns.Add(new Column(columnInfo.Name, table, index, columnInfo.DataType, columnInfo.Precision, columnInfo.Scale, columnInfo.MaxLength,
+                        columnInfo.IsNullable, columnInfo.IsKey, columnInfo.IsIdentity, columnInfo.IsRowguidCol, columnInfo.IsComputed, columnInfo.DefaultValue).WithMetadata(columnInfo));
+                }
+
+                foreach (var columnInfo in LoadViewColumns())
+                {
+                    var schema = db.Schemas[columnInfo.SchemaName];
+                    var table = schema.Views[columnInfo.TableName];
                     var index = table.Columns.Count;
                     table.Columns.Add(new Column(columnInfo.Name, table, index, columnInfo.DataType, columnInfo.Precision, columnInfo.Scale, columnInfo.MaxLength,
                         columnInfo.IsNullable, columnInfo.IsKey, columnInfo.IsIdentity, columnInfo.IsRowguidCol, columnInfo.IsComputed, columnInfo.DefaultValue).WithMetadata(columnInfo));
@@ -102,7 +117,9 @@ namespace Geco.Common.MetadataProviders
 
         protected abstract string GetName();
         protected abstract IEnumerable<TableInfo> LoadTables();
+        protected abstract IEnumerable<TableInfo> LoadViews();
         protected abstract IEnumerable<ColumnInfo> LoadColumns();
+        protected abstract IEnumerable<ColumnInfo> LoadViewColumns();
         protected abstract IEnumerable<ForeignKeyInfo> LoadForeignKeys();
         protected abstract IEnumerable<TriggerInfo> LoadTriggerInfo();
         protected abstract IEnumerable<IndexColumnInfo> LoadIndexInfo();

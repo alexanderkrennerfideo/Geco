@@ -10,6 +10,7 @@ namespace Geco.Common.SimpleMetadata
         {
             Name = name;
             Tables = new MetadataCollection<Table>(OnAdd, OnRemove);
+            Views = new MetadataCollection<Table>(OnAdd, OnRemove);
         }
 
         private void OnAdd(Table table)
@@ -36,5 +37,6 @@ namespace Geco.Common.SimpleMetadata
 
         public override string Name { get; }
         public MetadataCollection<Table> Tables { get; }
+        public MetadataCollection<Table> Views { get; }
     }
 }

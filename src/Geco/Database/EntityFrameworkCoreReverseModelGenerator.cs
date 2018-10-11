@@ -30,6 +30,7 @@ namespace Geco.Database
             FilterTables();
             WriteEntityFiles();
             WriteContextFile();
+            WriteEntityFilesViews();
         }
 
         private void WriteEntityFiles()
@@ -37,6 +38,23 @@ namespace Geco.Database
             using (BeginFile($"{options.ContextName ?? Inf.Pascalise(Db.Name)}Entities.cs", options.OneFilePerEntity == false))
             using (WriteHeader(options.OneFilePerEntity == false))
                 foreach (var table in Db.Schemas.SelectMany(s => s.Tables).OrderBy(t => t.Name))
+                {
+                    var className = Inf.Pascalise(Inf.Singularise(table.Name));
+                    table.Metadata["Class"] = className;
+
+                    using (BeginFile($"{className}.cs", options.OneFilePerEntity))
+                    using (WriteHeader(options.OneFilePerEntity))
+                    {
+                        WriteEntity(table);
+                    }
+                }
+        }
+
+        private void WriteEntityFilesViews()
+        {
+            using (BeginFile($"{options.ContextName ?? Inf.Pascalise(Db.Name)}Entities.cs", options.OneFilePerEntity == false))
+            using (WriteHeader(options.OneFilePerEntity == false))
+                foreach (var table in Db.Schemas.SelectMany(s => s.Views).OrderBy(t => t.Name))
                 {
                     var className = Inf.Pascalise(Inf.Singularise(table.Name));
                     table.Metadata["Class"] = className;
@@ -106,12 +124,16 @@ namespace Geco.Database
                     W();
                     {
                         WriteDbSets();
+                        W();
+                        WriteDbSetViews();
                     }
                     W();
                     W("protected override void OnModelCreating(ModelBuilder modelBuilder)");
                     WI("{");
                     {
                         WriteModelBuilderConfigurations();
+                        W();
+                        WriteModelBuilderConfigurationViews();
                     }
                     DW("}");
                 }
@@ -158,6 +180,17 @@ namespace Geco.Database
             foreach (var table in Db.Schemas.SelectMany<Schema, Table>(s => s.Tables).OrderBy<Table, string>(t => t.Name))
             {
                 var className = table.Metadata["Class"];
+                var plural = Inf.Pluralise(className);
+                table.Metadata["DbSet"] = plural;
+                W($"public virtual DbSet<{className}> {plural} {{ get; set; }}");
+            }
+        }
+
+        private void WriteDbSetViews()
+        {
+            foreach (var table in Db.Schemas.SelectMany<Schema, Table>(s => s.Views).OrderBy<Table, string>(t => t.Name))
+            {
+                var className = table.Name;
                 var plural = Inf.Pluralise(className);
                 table.Metadata["DbSet"] = plural;
                 W($"public virtual DbSet<{className}> {plural} {{ get; set; }}");
@@ -350,6 +383,65 @@ namespace Geco.Database
                         SemiColon();
                         W();
                     }
+                    Dedent();
+                }
+                DW("});");
+            }
+        }
+
+        private void WriteModelBuilderConfigurationViews()
+        {
+            foreach (var table in Db.Schemas.SelectMany<Schema, Table>(s => s.Views).OrderBy(t => t.Name))
+            {
+                var className = table.Name;
+                W($"modelBuilder.Entity<{className}>(entity =>");
+                WI("{");
+                {
+                    W($"entity.ToTable(\"{table.Name}\", \"{table.Schema.Name}\");");
+
+                    if (table.Columns.Count<Column>(c => c.IsKey) == 1)
+                    {
+                        var col = table.Columns.First<Column>(c => c.IsKey);
+                        W($"entity.HasKey(e => e.{col.Metadata["Property"]})");
+                        SemiColon();
+                    }
+                    else if (table.Columns.Count<Column>(c => c.IsKey) > 1)
+                    {
+                        W($"entity.HasKey(e => new {{ {string.Join(", ", table.Columns.Where<Column>(c => c.IsKey).Select(c => "e." + c.Metadata["Property"]))} }});");
+                    }
+
+                    WI();
+                    foreach (var column in table.Columns.Where<Column>(c => c.ForeignKey == null))
+                    {
+                        var propertyName = column.Metadata["Property"];
+                        DW($"entity.Property(e => e.{propertyName})");
+                        IW($".HasColumnName(\"{column.Name}\")");
+                        W($".HasColumnType(\"{GetColumnType(column)}\")");
+                        if (!String.IsNullOrEmpty(column.DefaultValue))
+                        {
+                            W($".HasDefaultValueSql(\"{RemoveExtraParantesis(column.DefaultValue)}\")");
+                        }
+                        if (IsString(column.DataType) && !column.IsNullable)
+                        {
+                            W($".IsRequired()");
+                        }
+                        if (IsString(column.DataType) && column.MaxLength != -1)
+                        {
+                            W($".HasMaxLength({column.MaxLength})");
+                        }
+                        if (column.DataType == "uniqueidentifier")
+                        {
+                            W(".ValueGeneratedOnAdd()");
+                        }
+                        if (column.IsIdentity)
+                        {
+                            W(".UseSqlServerIdentityColumn()");
+                            W(".ValueGeneratedOnAdd()");
+                        }
+                        SemiColon();
+                        W();
+                    }
+
                     Dedent();
                 }
                 DW("});");

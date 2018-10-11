@@ -33,6 +33,17 @@ namespace Geco.Common.MetadataProviders.SqlServer
                 FROM sys.tables t ");
         }
 
+
+        protected override IEnumerable<TableInfo> LoadViews()
+        {
+            return Query<TableInfo>(
+                @"SELECT 
+                      t.name as Name, 
+                      OBJECT_SCHEMA_NAME(t.object_id) as [SchemaName], 
+                      t.is_tracked_by_cdc
+                FROM sys.views t ");
+        }
+
         protected override IEnumerable<ColumnInfo> LoadColumns()
         {
             return Query<ColumnInfo>(
@@ -58,6 +69,36 @@ namespace Geco.Common.MetadataProviders.SqlServer
                       is_computed as IsComputed
                 FROM sys.columns c
                 INNER JOIN sys.tables t ON c.object_id = t.object_id
+                INNER JOIN sys.types ty ON c.user_type_id = ty.user_type_id
+				LEFT JOIN sys.types sty ON ty.system_type_id = sty.user_type_id
+                ORDER BY SchemaName, TableName, c.column_id");
+        }
+
+        protected override IEnumerable<ColumnInfo> LoadViewColumns()
+        {
+            return Query<ColumnInfo>(
+                @"SELECT
+                      SCHEMA_NAME(t.schema_id) as SchemaName,
+                      t.name as TableName,
+                      c.name as Name,
+                      ISNULL(sty.name, ty.name) as DataType,
+                      CAST(c.precision as int) as Precision,
+                      CAST(c.scale as int) as Scale,
+                      CAST(ISNULL(COLUMNPROPERTY(c.object_id, c.name, 'charmaxlen'), c.max_length) AS int) as MaxLength,
+                      c.is_nullable as IsNullable,
+                      c.is_rowguidcol as IsRowGuidCol,
+                      CAST((CASE WHEN EXISTS (SELECT 1
+                            FROM sys.index_columns ic
+                            INNER JOIN sys.indexes i ON ic.object_id = i.object_id AND i.index_id = ic.index_id
+                            INNER JOIN sys.key_constraints kc ON kc.parent_object_id = i.object_id
+                            WHERE i.is_primary_key = 1 AND kc.type = 'PK' AND ic.column_id = c.column_id AND ic.object_id = c.object_id)
+                      THEN 1
+                      ELSE 0 END) AS Bit) as IsKey,
+                      CAST(columnproperty(t.object_id, c.name ,'IsIdentity')  AS Bit) as IsIdentity,
+                      object_definition(c.default_object_id) as DefaultValue,
+                      is_computed as IsComputed
+                FROM sys.columns c
+                INNER JOIN sys.views t ON c.object_id = t.object_id
                 INNER JOIN sys.types ty ON c.user_type_id = ty.user_type_id
 				LEFT JOIN sys.types sty ON ty.system_type_id = sty.user_type_id
                 ORDER BY SchemaName, TableName, c.column_id");
